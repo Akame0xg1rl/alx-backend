@@ -1,29 +1,11 @@
 #!/usr/bin/env python3
 """
-Defines class Server that paginates a database of popular baby names
+Deletion-resilient hypermedia pagination
 """
+
 import csv
 import math
-from typing import List, Tuple
-
-
-def index_range(page: int, page_size: int) -> Tuple[int, int]:
-    """
-    Takes 2 integer arguments and returns a tuple of size two
-    containing the start and end index corresponding to the range of
-    indexes to return in a list for those pagination parameters
-    Args:
-        page (int): page number to return (pages are 1-indexed)
-        page_size (int): number of items per page
-    Return:
-        tuple(start_index, end_index)
-    """
-    start, end = 0, 0
-    for i in range(page):
-        start = end
-        end += page_size
-
-    return (start, end)
+from typing import List, Dict
 
 
 class Server:
@@ -33,6 +15,7 @@ class Server:
 
     def __init__(self):
         self.__dataset = None
+        self.__indexed_dataset = None
 
     def dataset(self) -> List[List]:
         """Cached dataset
@@ -45,22 +28,30 @@ class Server:
 
         return self.__dataset
 
-    def get_page(self, page: int = 1, page_size: int = 10) -> List[List]:
+    def indexed_dataset(self) -> Dict[int, List]:
+        """Dataset indexed by sorting position, starting at 0
         """
-        Takes 2 integer arguments and returns requested page from the dataset
-        Args:
-            page (int): required page number. must be a positive integer
-            page_size (int): number of records per page. must be a +ve integer
-        Return:
-            list of lists containing required data from the dataset
-        """
-        assert type(page) is int and page > 0
-        assert type(page_size) is int and page_size > 0
+        if self.__indexed_dataset is None:
+            dataset = self.dataset()
+            truncated_dataset = dataset[:1000]
+            self.__indexed_dataset = {
+                i: dataset[i] for i in range(len(dataset))
+            }
+        return self.__indexed_dataset
 
-        dataset = self.dataset()
-        data_length = len(dataset)
-        try:
-            index = index_range(page, page_size)
-            return dataset[index[0]:index[1]]
-        except IndexError:
-            return []
+    def get_hyper_index(self, index: int = None, page_size: int = 10) -> Dict:
+        """ return a dictionary """
+        assert type(index) == int and type(page_size) == int
+        assert 0 <= index < len(self.indexed_dataset())
+        pages = []
+        next_index = index + page_size
+        for i in range(index, index + page_size):
+            if not self.indexed_dataset().get(i):
+                i += 1
+                next_index += 1
+            pages.append(self.indexed_dataset()[i])
+        return {'index': index,
+                'next_index': next_index,
+                'page_size': page_size,
+                'data': pages
+                }
